@@ -1,0 +1,27 @@
+[workspace]
+members = [
+  "rc-common",
+  "rc-core",
+  "rc-crypto",
+  "rc-kms",
+  "rc-api"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Proprietary"
+authors = ["RCProtocol"]
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "json"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["serde", "v4"] }

@@ -1,0 +1,13 @@
+{
+  "name": "rcprotocol-frontend-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:c-app": "echo TODO: wire uni-app c-app dev command",
+    "dev:b-console": "echo TODO: wire uni-app b-console dev command"
+  }
+}
