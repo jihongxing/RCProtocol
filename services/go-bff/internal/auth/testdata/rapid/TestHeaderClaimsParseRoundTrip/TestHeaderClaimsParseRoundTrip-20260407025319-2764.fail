@@ -1,0 +1,27 @@
+# 2026/04/07 02:53:19.620457 [TestHeaderClaimsParseRoundTrip] [rapid] draw sub: "-"
+# 2026/04/07 02:53:19.620457 [TestHeaderClaimsParseRoundTrip] [rapid] draw role: "-"
+# 2026/04/07 02:53:19.620457 [TestHeaderClaimsParseRoundTrip] [rapid] draw org_id: "-"
+# 2026/04/07 02:53:19.620457 [TestHeaderClaimsParseRoundTrip] [rapid] draw brand_id: "-"
+# 2026/04/07 02:53:19.620457 [TestHeaderClaimsParseRoundTrip] ParseClaims returned error for valid headers: invalid role: -
+# 
+v0.4.8#15900525151658530022
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

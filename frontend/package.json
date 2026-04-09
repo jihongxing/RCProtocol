@@ -2,12 +2,31 @@
   "name": "rcprotocol-frontend-workspace",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "type": "module",
   "scripts": {
-    "dev:c-app": "echo TODO: wire uni-app c-app dev command",
-    "dev:b-console": "echo TODO: wire uni-app b-console dev command"
+    "dev:c-app": "pnpm --filter c-app dev",
+    "dev:b-console": "pnpm --filter b-console dev",
+    "build:c-app": "pnpm --filter c-app build",
+    "build:b-console": "pnpm --filter b-console build",
+    "lint": "eslint .",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "eslint": "^9.0.0",
+    "@vue/eslint-config-typescript": "^14.0.0",
+    "eslint-plugin-vue": "^9.30.0",
+    "vitest": "^2.0.0",
+    "@vitest/ui": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "@fast-check/vitest": "^0.1.0",
+    "fast-check": "^3.22.0",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^25.0.1",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "@vitejs/plugin-vue": "^5.0.0"
   }
 }

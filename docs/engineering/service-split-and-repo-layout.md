@@ -186,15 +186,15 @@ services/
 
 ---
 
-## 5. uni-app 工程布局
+## 5. 前端工程布局
 
 建议目录：
 
 ```text
 frontend/
 ├─ apps/
-│  ├─ c-app/
-│  └─ b-console/
+│  ├─ c-app/          # uni-app (Vue 3 + Vite)，C 端验真
+│  └─ b-console/      # Vue 3 + Vite + vue-router，B 端治理后台
 └─ packages/
    ├─ api/
    ├─ auth/
@@ -203,7 +203,15 @@ frontend/
    └─ utils/
 ```
 
+技术栈差异：
+- c-app 使用 uni-app 框架（验真场景需跨端，H5/小程序/App）
+- b-console 使用标准 Vue 3 + vue-router（桌面后台管理需嵌套路由、侧边栏布局）
+- 共享包 packages/utils（类型定义、常量）跨端通用
+- packages/api、packages/state、packages/ui 按需区分端适配
+
 ### 5.1 `c-app`
+
+框架：uni-app (Vue 3 + Vite)
 
 面向：
 
@@ -221,6 +229,8 @@ frontend/
 - 荣誉态页面
 
 ### 5.2 `b-console`
+
+框架：Vue 3 + Vite + vue-router（标准 SPA）
 
 面向：
 
@@ -438,7 +448,7 @@ tools/
 
 - 用 `rust/` 固化协议和安全内核
 - 用 `services/` 承载 Go 业务编排与快速迭代
-- 用 `frontend/` 承载 uni-app 多端应用
+- 用 `frontend/` 承载前端应用（c-app 用 uni-app 跨端，b-console 用 Vue 3 SPA）
 - 用 `docs/engineering/` 持续维护工程与实现说明
 
 这样既能保证协议层强约束，又能保留业务层足够快的迭代速度。

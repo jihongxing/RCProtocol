@@ -53,7 +53,10 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 - `foundation/domain-model.md`
 - `foundation/state-machine.md`
 - `foundation/roles-and-permissions.md`
+- `foundation/protocol-definition.md`
 - `foundation/security-model.md`
+- `foundation/protocol-gap-analysis.md`
+- `foundation/target-protocol-architecture.md`
 - `foundation/api-and-service-boundaries.md`
 - `engineering/system-architecture.md`
 - `engineering/technical-solution.md`
@@ -65,6 +68,24 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 - `product/commercial-scenario-and-buyer.md`
 - `business/business-model.md`
 - `ops/` 下运维手册
+
+以下文件属于 **当前协议演进实现提案（Draft Specs）**，可作为后续 Stage 7~10 的实现设计输入，但尚未替代现有落地基线：
+
+- `specs/spec-asset-commitment.md`
+- `specs/spec-brand-attestation.md`
+- `specs/spec-platform-attestation.md`
+- `specs/spec-verification-v2.md`
+
+以下文件属于 **当前协议演进任务拆解（Implementation Tasks）**，用于把 Draft Specs 进一步转成可排期、可编码、可验收的执行任务：
+
+- `tasks/task-asset-commitment-migration.md`
+- `tasks/task-attestation-flows.md`
+- `tasks/task-verification-v2-implementation.md`
+
+以下文件属于 **代码级实施计划（Code Plans）**，用于把任务文档进一步映射到当前仓库的模块、函数、migration 与测试文件：
+
+- `tasks/code-plan-asset-commitment.md`
+- `tasks/code-plan-attestations-and-verify-v2.md`
 
 ### 2.4 开发落地顺序
 
@@ -85,7 +106,10 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 - 术语与核心对象：`foundation/domain-model.md`
 - 状态机：`foundation/state-machine.md`
 - 角色与权限：`foundation/roles-and-permissions.md`
+- 协议术语定义：`foundation/protocol-definition.md`
 - 安全与密钥体系：`foundation/security-model.md`
+- 当前实现与目标协议差距：`foundation/protocol-gap-analysis.md`
+- 目标协议终局架构：`foundation/target-protocol-architecture.md`
 - 服务与 API 边界：`foundation/api-and-service-boundaries.md`
 - 工程基线：`engineering/system-architecture.md`
 - 技术选型与分层实现方案：`engineering/technical-solution.md`
@@ -118,37 +142,56 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 2. `foundation/domain-model.md`
 3. `foundation/state-machine.md`
 4. `foundation/roles-and-permissions.md`
-5. `foundation/security-model.md`
-6. `product/mvp-scope-and-cutline.md`
-7. `product/commercial-scenario-and-buyer.md`
-8. `engineering/system-architecture.md`
-9. `engineering/technical-solution.md`
-10. `engineering/service-split-and-repo-layout.md`
-11. `engineering/spec-implementation-workflow.md`
-12. `product/product-system.md`
+5. `foundation/protocol-definition.md`
+6. `foundation/security-model.md`
+7. `foundation/protocol-gap-analysis.md`
+8. `foundation/target-protocol-architecture.md`
+9. `foundation/api-and-service-boundaries.md`
+10. `product/mvp-scope-and-cutline.md`
+11. `product/commercial-scenario-and-buyer.md`
+12. `engineering/system-architecture.md`
+13. `engineering/technical-solution.md`
+14. `engineering/service-split-and-repo-layout.md`
+15. `engineering/spec-implementation-workflow.md`
+16. `product/product-system.md`
 
 ### 面向研发
 
-1. `foundation/state-machine.md`
-2. `foundation/security-model.md`
-3. `foundation/api-and-service-boundaries.md`
-4. `product/mvp-scope-and-cutline.md`
-5. `product/commercial-scenario-and-buyer.md`
-6. `engineering/system-architecture.md`
-7. `engineering/technical-solution.md`
-8. `engineering/service-split-and-repo-layout.md`
-9. `engineering/spec-implementation-workflow.md`
-10. `ops/`
+1. `foundation/protocol-definition.md`
+2. `foundation/state-machine.md`
+3. `foundation/security-model.md`
+4. `foundation/api-and-service-boundaries.md`
+5. `foundation/protocol-gap-analysis.md`
+6. `foundation/target-protocol-architecture.md`
+7. `product/mvp-scope-and-cutline.md`
+8. `product/commercial-scenario-and-buyer.md`
+9. `engineering/system-architecture.md`
+10. `engineering/technical-solution.md`
+11. `engineering/service-split-and-repo-layout.md`
+12. `engineering/spec-implementation-workflow.md`
+13. `specs/spec-asset-commitment.md`
+14. `specs/spec-brand-attestation.md`
+15. `specs/spec-platform-attestation.md`
+16. `specs/spec-verification-v2.md`
+17. `tasks/task-asset-commitment-migration.md`
+18. `tasks/task-attestation-flows.md`
+19. `tasks/task-verification-v2-implementation.md`
+20. `tasks/code-plan-asset-commitment.md`
+21. `tasks/code-plan-attestations-and-verify-v2.md`
+22. `ops/`
 
 ### 面向产品 / 设计
 
 1. `foundation/project-overview.md`
-2. `product/mvp-scope-and-cutline.md`
-3. `product/commercial-scenario-and-buyer.md`
-4. `foundation/domain-model.md`
-5. `product/product-system.md`
-6. `business/business-model.md`
-7. `engineering/spec-implementation-workflow.md`
+2. `foundation/protocol-definition.md`
+3. `foundation/protocol-gap-analysis.md`
+4. `foundation/target-protocol-architecture.md`
+5. `product/mvp-scope-and-cutline.md`
+6. `product/commercial-scenario-and-buyer.md`
+7. `foundation/domain-model.md`
+8. `product/product-system.md`
+9. `business/business-model.md`
+10. `engineering/spec-implementation-workflow.md`
 
 ### 面向合作 / 商业 / 对外方案
 
@@ -170,7 +213,10 @@ docs/
 │  ├─ domain-model.md
 │  ├─ state-machine.md
 │  ├─ roles-and-permissions.md
+│  ├─ protocol-definition.md
 │  ├─ security-model.md
+│  ├─ protocol-gap-analysis.md
+│  ├─ target-protocol-architecture.md
 │  └─ api-and-service-boundaries.md
 ├─ engineering/
 │  ├─ system-architecture.md
@@ -182,6 +228,24 @@ docs/
 │  ├─ product-system.md
 │  ├─ mvp-scope-and-cutline.md
 │  └─ commercial-scenario-and-buyer.md
+├─ specs/
+│  ├─ spec-04-brand-registration.md
+│  ├─ spec-05-activation-chain.md
+│  ├─ spec-06-approval-workflow.md
+│  ├─ spec-06-id-unification.md
+│  ├─ spec-asset-commitment.md
+│  ├─ spec-brand-attestation.md
+│  ├─ spec-platform-attestation.md
+│  └─ spec-verification-v2.md
+├─ tasks/
+│  ├─ task-17-implementation-status.md
+│  ├─ task-spec-04-brand-registration.md
+│  ├─ task-spec-06-id-unification.md
+│  ├─ task-asset-commitment-migration.md
+│  ├─ task-attestation-flows.md
+│  ├─ task-verification-v2-implementation.md
+│  ├─ code-plan-asset-commitment.md
+│  └─ code-plan-attestations-and-verify-v2.md
 ├─ business/
 │  └─ business-model.md
 ├─ ops/
@@ -200,5 +264,12 @@ docs/
 - 顶层只保留新的统一结构
 - `ops/` 保留运维手册
 - `archive/` 保留历史材料
+
+### 当前实现进展（摘录）
+
+- `Spec-04: 品牌极简注册与 API Key 管理`：✅ 已落地实现
+  - 已完成品牌注册、API Key 轮换、品牌详情、API Key 列表
+  - 已补齐 migration、集成测试与联调脚本
+  - 标准联调入口：`scripts/test-brand-registration.sh` / `scripts/test-brand-registration.ps1`
 
 后续新增文档时，必须先判断其归属层级；若内容已在现有权威文档中定义，则应修改原文档，而不是新增重复文档。

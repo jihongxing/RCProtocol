@@ -42,6 +42,64 @@ RCProtocol/
 - `scripts/local-main-chain.ps1`：Windows PowerShell 主链路联调脚本
 - `scripts/local-reset-and-assert.ps1`：Windows PowerShell 重置说明与结果断言脚本
 
+## 品牌注册快速开始
+
+### 1. 启动依赖服务
+
+1. 启动 PostgreSQL / Redis / `rc-api`
+2. 确保 migration 已执行
+3. 如需测试数据，可开启 seed
+
+### 2. 生成 Platform Token
+
+可直接运行：
+
+```bash
+./scripts/generate-platform-token.sh
+```
+
+也可以自己设置 `PLATFORM_TOKEN` 环境变量后用于下面的请求。
+
+### 3. 注册品牌
+
+```bash
+curl -X POST "http://localhost:8081/brands" \
+  -H "Authorization: Bearer $PLATFORM_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brand_name": "Luxury Watch Co.",
+    "contact_email": "api@luxurywatch.com",
+    "industry": "Watches"
+  }'
+```
+
+返回值中会包含：
+- `brand_id`
+- 初始明文 `api_key`（仅返回一次）
+
+### 4. 轮换 API Key
+
+```bash
+curl -X POST "http://localhost:8081/brands/<brand_id>/api-keys/rotate" \
+  -H "X-Api-Key: <current_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "scheduled rotation"}'
+```
+
+### 5. 运行品牌注册联调脚本
+
+```bash
+./scripts/test-brand-registration.sh
+```
+
+该脚本会验证：
+- 品牌注册
+- 邮箱唯一性
+- API Key 轮换
+- 旧 Key 失效 / 新 Key 生效
+- API Key 列表查询
+- 权限校验
+
 ## 本地联调建议
 
 1. 用 compose 启动 PostgreSQL、Redis、rc-api

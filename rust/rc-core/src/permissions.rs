@@ -26,7 +26,7 @@ pub fn can_role_initiate(role: ActorRole, current_state: AssetState, action: Ass
         ),
         ActorRole::Moderator => matches!(
             action,
-            AssetAction::Freeze | AssetAction::Recover | AssetAction::MarkTampered | AssetAction::MarkCompromised
+            AssetAction::Freeze | AssetAction::Recover | AssetAction::MarkTampered | AssetAction::MarkCompromised | AssetAction::MarkDestructed
         ),
     }
 }

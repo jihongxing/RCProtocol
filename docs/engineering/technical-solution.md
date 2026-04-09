@@ -60,17 +60,16 @@ Go 负责“需要快速变化、快速交付、业务编排强”的部分：
 - 报表与运营视图
 - 文件 / 素材 / 配置类管理
 
-### 2.3 uni-app 的职责边界
+### 2.3 前端的职责边界
 
-uni-app 负责用户交互和跨端交付：
+前端负责用户交互和多端交付，按使用场景分为两套技术栈：
 
-- H5 验真页
-- C 端资产馆 / 预览 / 过户页
-- B 端治理后台
-- 工厂任务页
-- 审核页
+- **uni-app（c-app）**：C 端验真、资产馆、预览、过户页。面向手机扫码场景，需要跨端能力（H5 / 小程序 / App），uni-app 是合理选择。
+- **Vue 3 + Vite + vue-router（b-console）**：B 端治理后台、工厂任务页、审核页。面向桌面浏览器，需要嵌套路由、侧边栏布局、表格密集型交互，标准 Vue SPA 更合适。
 
 前端只负责展示与触发，不定义协议规则。
+
+> **设计决策记录**：b-console 最初设计为 uni-app，后评估发现 uni-app 的页面栈路由、移动端组件生态和 rpx 单位体系不适合桌面端后台管理场景，改为标准 Vue 3 SPA。
 
 ---
 
@@ -293,26 +292,35 @@ services/
 
 ---
 
-## 6. uni-app 前端方案
+## 6. 前端方案
 
 ### 6.1 前端应用划分
 
-建议在 `frontend/apps/` 下至少拆两套应用：
+建议在 `frontend/apps/` 下拆两套应用，采用不同技术栈：
 
 ```text
 frontend/
 ├─ apps/
-│  ├─ c-app/
-│  └─ b-console/
+│  ├─ c-app/          # uni-app（Vue 3 + Vite），面向 C 端验真
+│  └─ b-console/      # Vue 3 + Vite + vue-router，面向 B 端治理后台
 └─ packages/
-   ├─ api/
+   ├─ api/            # HTTP 请求封装（c-app 用 uni.request，b-console 用 fetch）
    ├─ auth/
-   ├─ state/
-   ├─ ui/
-   └─ utils/
+   ├─ state/          # 全局状态管理（Vue 3 Composition API）
+   ├─ ui/             # 通用 UI 组件（按端分组件实现）
+   └─ utils/          # 工具函数与类型定义（跨端共享）
 ```
 
-### 6.2 `c-app`
+### 6.2 技术栈决策
+
+| 应用 | 框架 | 路由 | 构建 | 目标平台 | 原因 |
+|------|------|------|------|----------|------|
+| c-app | uni-app (Vue 3) | uni-app 页面栈 | @dcloudio/vite-plugin-uni | H5 / 小程序 / App | 验真场景为手机扫码，需跨端能力 |
+| b-console | Vue 3 | vue-router | Vite | 桌面浏览器 H5 | 后台管理需要嵌套路由、侧边栏、表格密集交互 |
+
+### 6.3 `c-app`
+
+框架：uni-app (Vue 3 + Vite)
 
 面向：
 
@@ -329,7 +337,9 @@ frontend/
 - 过户确认页
 - 荣誉态页面
 
-### 6.3 `b-console`
+### 6.4 `b-console`
+
+框架：Vue 3 + Vite + vue-router
 
 面向：
 
@@ -347,7 +357,7 @@ frontend/
 - 风控页
 - 报表页
 
-### 6.4 前端设计约束
+### 6.5 前端设计约束
 
 前端必须遵守：
 
@@ -673,7 +683,7 @@ RCProtocol 最适合采用：
 
 - **Rust 固化协议与安全真相**
 - **Go 承担业务快速迭代与治理编排**
-- **uni-app 完成多端前端交付**
+- **uni-app 完成 C 端跨端交付，Vue 3 SPA 完成 B 端桌面治理后台**
 
 这是兼顾安全性、一致性、开发效率和跨端交付效率的最优组合。
 

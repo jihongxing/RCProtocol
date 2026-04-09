@@ -114,6 +114,7 @@ pub enum AssetAction {
     Recover,
     MarkTampered,
     MarkCompromised,
+    MarkDestructed,
 }
 
 impl AssetAction {
@@ -132,6 +133,7 @@ impl AssetAction {
             Self::Recover => "Recover",
             Self::MarkTampered => "MarkTampered",
             Self::MarkCompromised => "MarkCompromised",
+            Self::MarkDestructed => "MarkDestructed",
         }
     }
 }

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "strict": true,
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "paths": {
+      "@rcprotocol/api": ["./packages/api/src"],
+      "@rcprotocol/state": ["./packages/state/src"],
+      "@rcprotocol/ui/uni": ["./packages/ui/src/uni"],
+      "@rcprotocol/ui/web": ["./packages/ui/src/web"],
+      "@rcprotocol/utils": ["./packages/utils/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

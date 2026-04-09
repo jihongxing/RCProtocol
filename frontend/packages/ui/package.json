@@ -1,0 +1,17 @@
+{
+  "name": "@rcprotocol/ui",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./uni": "./src/uni/index.ts",
+    "./web": "./src/web/index.ts"
+  },
+  "dependencies": {
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "@rcprotocol/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "3.4.28"
+  }
+}

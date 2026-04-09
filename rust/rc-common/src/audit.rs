@@ -12,6 +12,7 @@ pub struct AuditContext {
     pub idempotency_key: String,
     pub approval_id: Option<String>,
     pub policy_version: Option<String>,
+    pub buyer_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

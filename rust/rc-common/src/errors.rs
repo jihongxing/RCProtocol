@@ -24,4 +24,28 @@ pub enum RcError {
     IdempotencyConflict,
     #[error("database error: {0}")]
     Database(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("unauthorized")]
+    Unauthorized,
+    #[error("token expired")]
+    TokenExpired,
+    #[error("invalid signature")]
+    InvalidSignature,
+    #[error("invalid claims: {0}")]
+    InvalidClaims(&'static str),
+    #[error("brand boundary violation")]
+    BrandBoundaryViolation,
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+    #[error("brand not found")]
+    BrandNotFound,
+    #[error("product not found")]
+    ProductNotFound,
+    #[error("duplicate resource: {0}")]
+    DuplicateResource(String),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("conflict: {0}")]
+    Conflict(String),
 }

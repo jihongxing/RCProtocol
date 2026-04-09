@@ -1,3 +1,8 @@
-pub fn derive_chip_key(_brand_id: &str, _uid: &str, _epoch: u32) -> [u8; 16] {
-    [0u8; 16]
-}
+pub mod error;
+pub mod provider;
+mod root_key;
+mod software_kms;
+
+pub use error::KmsError;
+pub use provider::KeyProvider;
+pub use software_kms::SoftwareKms;

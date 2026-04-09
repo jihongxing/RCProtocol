@@ -1,0 +1,18 @@
+{
+  "pages": [
+    { "path": "pages/verify", "style": { "navigationBarTitleText": "验真" } },
+    { "path": "pages/login", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/vault/index", "style": { "navigationBarTitleText": "资产馆" } },
+    { "path": "pages/vault/detail", "style": { "navigationBarTitleText": "资产详情" } },
+    { "path": "pages/vault/transfer", "style": { "navigationBarTitleText": "发起转让" } },
+    { "path": "pages/vault/transfer-confirm", "style": { "navigationBarTitleText": "确认接收" } }
+  ],
+  "tabBar": {
+    "color": "#999",
+    "selectedColor": "#4CAF50",
+    "list": [
+      { "pagePath": "pages/verify", "text": "验真" },
+      { "pagePath": "pages/vault/index", "text": "资产馆" }
+    ]
+  }
+}

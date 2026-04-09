@@ -16,3 +16,24 @@ sqlx.workspace = true
 uuid.workspace = true
 rc-common = { path = "../rc-common" }
 rc-core = { path = "../rc-core" }
+rc-crypto = { path = "../rc-crypto" }
+rc-kms = { path = "../rc-kms" }
+hex = { workspace = true }
+chrono = { workspace = true }
+jsonwebtoken = { workspace = true }
+nanoid = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+ulid = { workspace = true }
+ed25519-dalek = { workspace = true }
+redis = { version = "0.25", features = ["tokio-comp", "aio"] }
+dashmap = "6"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+hyper = "1"
+http-body-util = "0.1"
+serial_test = { workspace = true }
+proptest = "1"
+rc-test-helpers = { path = "../rc-test-helpers" }

@@ -8,3 +8,7 @@ authors.workspace = true
 [dependencies]
 rc-common = { path = "../rc-common" }
 uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+proptest = "1"

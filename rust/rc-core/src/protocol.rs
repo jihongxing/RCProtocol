@@ -3,10 +3,10 @@ use uuid::Uuid;
 use rc_common::{
     audit::{AuditContext, AuditEvent},
     errors::RcError,
-    types::{AssetAction, AssetRecord, AssetState},
+    types::{ActorRole, AssetAction, AssetRecord, AssetState},
 };
 
-use crate::{permissions::can_role_initiate, state_machine::next_state_for_action};
+use crate::{permissions::can_role_initiate, state_machine::{next_state_for_action, next_state_for_action_with_previous}};
 
 pub fn apply_action(record: &AssetRecord, action: AssetAction, context: AuditContext) -> Result<(AssetRecord, AuditEvent), RcError> {
     if record.current_state.is_terminal() {
@@ -30,12 +30,26 @@ pub fn apply_action(record: &AssetRecord, action: AssetAction, context: AuditCon
         return Err(RcError::FrozenAsset);
     }
 
+    // Platform 执行非治理类动作时强制要求 approval_id
+    if context.actor_role == ActorRole::Platform && is_business_action && context.approval_id.is_none() {
+        return Err(RcError::PermissionDenied);
+    }
+
     if !can_role_initiate(context.actor_role, record.current_state, action) {
         return Err(RcError::PermissionDenied);
     }
 
+    // LegalSell 必须携带 buyer_id
+    if action == AssetAction::LegalSell && context.buyer_id.is_none() {
+        return Err(RcError::InvalidInput("LegalSell requires buyer_id".into()));
+    }
+
     let target_state = match action {
-        AssetAction::Recover => record.previous_state.ok_or(RcError::MissingPreviousState)?,
+        // Recover: 从 PG 记录的 previous_state 恢复（非客户端传入）
+        AssetAction::Recover => {
+            next_state_for_action_with_previous(record.current_state, action, record.previous_state)
+                .ok_or(RcError::InvalidStateTransition)?
+        }
         _ => next_state_for_action(record.current_state, action).ok_or(RcError::InvalidStateTransition)?,
     };
 

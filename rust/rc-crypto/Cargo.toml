@@ -6,3 +6,12 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+hmac = { workspace = true }
+sha2 = { workspace = true }
+cmac = { workspace = true }
+aes = { workspace = true }
+subtle = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"

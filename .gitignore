@@ -1,0 +1,53 @@
+rust/target/
+
+# Node / frontend dependencies
+**/node_modules/
+
+# Common build outputs
+**/dist/
+**/build/
+**/out/
+**/coverage/
+**/.next/
+**/.nuxt/
+
+# Common compiled outputs
+**/bin/
+**/obj/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# IDE and local tooling
+.vscode/
+.idea/
+.claude/
+.kiro/
+
+# OS / editor noise
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+
+# Logs and temp files
+**/*.log
+**/*.tmp
+**/*.temp
+
+# Local databases / caches
+**/*.sqlite
+**/*.sqlite3
+**/.cache/
+
+# Generated binaries
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+
+# Rust / SQLx local artifacts
+rust/.sqlx/

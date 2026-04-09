@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
@@ -9,38 +7,67 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
-    volumes:
-      - ../postgres/init:/docker-entrypoint-initdb.d
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:-rcprotocol_dev} --appendonly yes
     ports:
-      - "${REDIS_PORT}:6379"
+      - "${REDIS_PORT:-6379}:6379"
 
   rc-api:
     image: rust:1.86
     working_dir: /workspace/rust
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RC_SEED_DATA: "true"
+      RC_AUTH_DISABLED: "${RC_AUTH_DISABLED:-false}"
+      RC_JWT_SECRET: "${RC_JWT_SECRET}"
+      RC_ROOT_KEY_HEX: "${RC_ROOT_KEY_HEX}"
+      RC_SYSTEM_ID: "${RC_SYSTEM_ID:-rcprotocol-v1}"
+      REDIS_URL: "${REDIS_URL}"
+      RC_API_FALLBACK_STRATEGY: "${RC_API_FALLBACK_STRATEGY:-Auto}"
     command: sh -c "cargo run -p rc-api"
     volumes:
       - ../../:/workspace
-    ports:
-      - "${RC_API_PORT}:8081"
+    expose:
+      - "8081"
     depends_on:
       - postgres
       - redis
 
+  go-iam:
+    image: golang:1.23
+    working_dir: /workspace/services/go-iam
+    command: sh -c "go run ./cmd/iam"
+    volumes:
+      - ../../:/workspace
+    expose:
+      - "8083"
+    environment:
+      IAM_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rcprotocol_iam
+      RC_JWT_SECRET: ${RC_JWT_SECRET}
+      GO_IAM_PORT: ":8083"
+    depends_on:
+      - postgres
+
   go-gateway:
     image: golang:1.23
     working_dir: /workspace/services/go-gateway
+    environment:
+      RC_JWT_SECRET: ${RC_JWT_SECRET}
+      RC_API_UPSTREAM: http://rc-api:8081
+      GO_BFF_UPSTREAM: http://go-bff:8082
+      GO_IAM_UPSTREAM: http://go-iam:8083
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-100}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-200}
     command: sh -c "go run ./cmd/gateway"
     volumes:
       - ../../:/workspace
     ports:
-      - "${GO_GATEWAY_PORT}:8080"
+      - "${GO_GATEWAY_PORT:-8080}:8080"
     depends_on:
       - rc-api
+      - go-iam
 
   go-bff:
     image: golang:1.23
@@ -48,7 +75,59 @@ services:
     command: sh -c "go run ./cmd/bff"
     volumes:
       - ../../:/workspace
-    ports:
-      - "${GO_BFF_PORT}:8082"
+    expose:
+      - "8082"
+    environment:
+      RC_API_BASE_URL: http://rc-api:8081
+      GO_IAM_BASE_URL: http://go-iam:8083
+      BFF_PORT: ":8082"
     depends_on:
       - rc-api
+
+  # go-approval:
+  #   # ARCHIVED 2026-04-07: Phase 2 architectural change - approval workflow moved to brand's own systems
+  #   # See services/archive/README.md for details and restoration instructions
+  #   image: golang:1.23
+  #   working_dir: /workspace/services/archive/go-approval
+  #   command: sh -c "go run ./cmd/approval"
+  #   volumes:
+  #     - ../../:/workspace
+  #   expose:
+  #     - "8084"
+  #   environment:
+  #     APPROVAL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rcprotocol_approval
+  #     APPROVAL_PORT: ":8084"
+  #     RC_API_BASE_URL: http://rc-api:8081
+  #   depends_on:
+  #     - postgres
+  #     - rc-api
+
+  go-workorder:
+    image: golang:1.23
+    working_dir: /workspace/services/go-workorder
+    command: sh -c "go run ./cmd/workorder"
+    volumes:
+      - ../../:/workspace
+    expose:
+      - "8085"
+    environment:
+      WORKORDER_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rcprotocol_workorder
+      WORKORDER_PORT: ":8085"
+      RC_API_BASE_URL: http://rc-api:8081
+    depends_on:
+      - postgres
+      - rc-api
+
+  go-webhook:
+    image: golang:1.23
+    working_dir: /workspace/services/go-webhook
+    command: sh -c "go run ./cmd/webhook"
+    volumes:
+      - ../../:/workspace
+    environment:
+      WEBHOOK_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      WEBHOOK_WORKER_COUNT: 5
+      WEBHOOK_MAX_RETRIES: 3
+      WEBHOOK_TIMEOUT_SECONDS: 30
+    depends_on:
+      - postgres

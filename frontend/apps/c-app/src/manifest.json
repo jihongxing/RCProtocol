@@ -1,0 +1,42 @@
+{
+  "name": "RCProtocol 验真",
+  "appid": "__UNI__RCPROTOCOL_C",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "h5": {
+    "title": "RCProtocol 验真",
+    "router": {
+      "mode": "hash"
+    },
+    "devServer": {
+      "port": 5173,
+      "proxy": {
+        "/api": {
+          "target": "http://localhost:8080",
+          "changeOrigin": true
+        }
+      }
+    }
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    },
+    "permission": {
+      "scope.nfc": {
+        "desc": "需要使用 NFC 功能扫描物理母卡进行授权"
+      }
+    }
+  },
+  "app-plus": {
+    "distribute": {
+      "android": {
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.NFC\"/>",
+          "<uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\"/>"
+        ]
+      }
+    }
+  }
+}
