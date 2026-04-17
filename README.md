@@ -42,6 +42,21 @@ RCProtocol/
 - `scripts/local-main-chain.ps1`：Windows PowerShell 主链路联调脚本
 - `scripts/local-reset-and-assert.ps1`：Windows PowerShell 重置说明与结果断言脚本
 
+## 本地基础设施说明
+
+当前本地默认约定为：
+
+- PostgreSQL 运行在 **Podman** 容器中，映射到 `localhost:5432`
+- Redis 运行在 **Podman** 容器中，映射到 `localhost:6379`
+- `rc-api` 在宿主机本地运行
+
+如需完整 Stage 5 联调，请优先阅读：
+
+- `docs/ops/stage-5-mvp-runbook.md`
+- `docs/ops/stage-5-error-matrix.md`
+- `docs/ops/stage-5-performance-baseline.md`
+- `docs/ops/stage-5-mvp-acceptance.md`
+
 ## 品牌注册快速开始
 
 ### 1. 启动依赖服务
@@ -102,15 +117,16 @@ curl -X POST "http://localhost:8081/brands/<brand_id>/api-keys/rotate" \
 
 ## 本地联调建议
 
-1. 用 compose 启动 PostgreSQL、Redis、rc-api
-2. 让 `001_init.sql` 与 `002_seed.sql` 自动初始化数据库
-3. 运行 `scripts/local-main-chain.ps1`
-4. 运行 `scripts/local-reset-and-assert.ps1`
-5. 观察 `asset_state_events`、`assets`、`idempotency_records` 三张表变化
+1. 确保 Podman 中的 PostgreSQL、Redis 已运行
+2. 启动 `rc-api`
+3. 按两阶段激活主链路理解接口语义：`/activate` 生成承诺与声明，`/activate-entangle` 生成虚拟母卡与母子绑定
+4. 运行 `scripts/stage5-brand-api-flow.sh` 或 `.ps1`
+5. 运行 `scripts/stage5-verify-compare.sh` 或 `.ps1`
+6. 运行 `scripts/stage5-main-chain.sh` 或 `.ps1`
+7. 运行 `scripts/stage5-error-matrix.sh` 或 `.ps1`
 
 ## 下一步建议
 
-1. 补鉴权解析，把 `Authorization` 拆成真实 actor / tenant 上下文
-2. 引入 migration 管理与测试夹具
-3. 为 `verify` 增加更完整的公开信息投影
-4. 将 Go Gateway / BFF 接到真实 `rc-api` 契约
+1. 持续把 Stage 5 回归入口接入 CI
+2. 补真实品牌试点预演数据
+3. 在 Stage 5 稳定后再推进 Stage 6 / Stage 7+

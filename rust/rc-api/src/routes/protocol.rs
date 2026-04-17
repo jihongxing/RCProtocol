@@ -39,7 +39,6 @@ pub fn write_router() -> Router<AppState> {
         .route("/assets/:asset_id/activate-entangle", post(activate_entangle_asset))
         .route("/assets/:asset_id/activate-confirm", post(activate_confirm_asset))
         .route("/assets/:asset_id/legal-sell", post(legal_sell_asset))
-        .route("/assets/:asset_id/transfer", post(transfer_asset))
         .route("/assets/:asset_id/consume", post(consume_asset))
         .route("/assets/:asset_id/legacy", post(legacy_asset))
         .route("/assets/:asset_id/freeze", post(freeze_asset))
@@ -112,7 +111,6 @@ pub struct ActivateResponse {
     pub from_state: AssetState,
     pub to_state: AssetState,
     pub audit_event_id: Uuid,
-    pub virtual_mother_card: VirtualMotherCard,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,6 +120,16 @@ pub struct AssetActionResponse {
     pub from_state: AssetState,
     pub to_state: AssetState,
     pub audit_event_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActivateEntangleResponse {
+    pub asset_id: String,
+    pub action: String,
+    pub from_state: AssetState,
+    pub to_state: AssetState,
+    pub audit_event_id: Uuid,
+    pub virtual_mother_card: VirtualMotherCard,
 }
 
 #[derive(Debug)]
@@ -229,7 +237,6 @@ async fn activate_asset(
     let (platform_id, platform_key_id, platform_signing_key) = match load_platform_signing_key() { Ok(v) => v, Err(err) => return error_response(err) };
     let platform_attestation = match build_platform_attestation_record(&platform_id, &commitment_record.commitment_id, issued_at, &platform_key_id, &platform_signing_key) { Ok(v) => v, Err(err) => return error_response(err) };
     if let Err(err) = insert_platform_attestation(&state.db, &platform_attestation).await { return error_response(err); }
-    let virtual_mother_card = match generate_virtual_mother_card_with_result(&state, &asset_id, &asset_record.brand_id, &actor.actor_id).await { Ok(v) => v, Err(err) => return error_response(err) };
     let response = ActivateResponse {
         asset_id: asset_id.clone(),
         asset_commitment_id: commitment_record.commitment_id.clone(),
@@ -239,7 +246,6 @@ async fn activate_asset(
         from_state: asset_record.current_state,
         to_state: next_record.current_state,
         audit_event_id: audit_event.event_id,
-        virtual_mother_card,
     };
     let response_snapshot = match serde_json::to_value(&response) { Ok(v) => v, Err(err) => return error_response(RcError::Database(err.to_string())) };
     match persist_action(&state.db, &next_record, &audit_event, &request_hash, response_snapshot, Some(&commitment_record.commitment_id), state.redis.clone()).await {
@@ -255,7 +261,82 @@ async fn activate_entangle_asset(
     headers: HeaderMap,
     Json(payload): Json<AssetActionRequest>,
 ) -> impl IntoResponse {
-    execute_asset_action(state, asset_id, AssetAction::ActivateEntangle, actor, headers, payload).await
+    let required_headers = match parse_required_headers(&headers) {
+        Ok(parsed) => parsed,
+        Err(err) => return error_response(err),
+    };
+
+    let request_hash = build_request_hash(
+        &asset_id,
+        AssetAction::ActivateEntangle,
+        &payload,
+        &actor,
+        &required_headers,
+    );
+
+    match load_idempotency_record(&state.db, &required_headers.idempotency_key).await {
+        Ok(Some(record)) => {
+            if record.request_hash != request_hash {
+                return error_response(RcError::IdempotencyConflict);
+            }
+            return Json(record.response_snapshot).into_response();
+        }
+        Ok(None) => {}
+        Err(err) => return error_response(err),
+    }
+
+    let mut asset_record = match fetch_asset(&state.db, &asset_id).await {
+        Ok(record) => record,
+        Err(err) => return error_response(err),
+    };
+
+    if let Err(err) = check_brand_boundary(&actor, &asset_record.brand_id) {
+        return error_response(err);
+    }
+
+    if payload.previous_state.is_some() {
+        asset_record.previous_state = payload.previous_state;
+    }
+
+    let context = AuditContext {
+        trace_id: required_headers.trace_id,
+        actor_id: actor.actor_id.clone(),
+        actor_role: actor.actor_role,
+        actor_org: actor.actor_org.clone(),
+        idempotency_key: required_headers.idempotency_key,
+        approval_id: required_headers.approval_id,
+        policy_version: required_headers.policy_version,
+        buyer_id: payload.buyer_id.clone(),
+    };
+
+    let (next_record, audit_event) = match apply_action(&asset_record, AssetAction::ActivateEntangle, context) {
+        Ok(v) => v,
+        Err(err) => return error_response(err),
+    };
+
+    let virtual_mother_card = match generate_virtual_mother_card_with_result(&state, &asset_id, &asset_record.brand_id, &actor.actor_id).await {
+        Ok(v) => v,
+        Err(err) => return error_response(err),
+    };
+
+    let response = ActivateEntangleResponse {
+        asset_id: asset_id.clone(),
+        action: AssetAction::ActivateEntangle.as_db_str().to_string(),
+        from_state: asset_record.current_state,
+        to_state: next_record.current_state,
+        audit_event_id: audit_event.event_id,
+        virtual_mother_card,
+    };
+
+    let response_snapshot = match serde_json::to_value(&response) {
+        Ok(value) => value,
+        Err(err) => return error_response(RcError::Database(err.to_string())),
+    };
+
+    match persist_action(&state.db, &next_record, &audit_event, &request_hash, response_snapshot, None, state.redis.clone()).await {
+        Ok(()) => Json(response).into_response(),
+        Err(err) => error_response(err),
+    }
 }
 
 async fn activate_confirm_asset(
@@ -276,16 +357,6 @@ async fn legal_sell_asset(
     Json(payload): Json<AssetActionRequest>,
 ) -> impl IntoResponse {
     execute_asset_action(state, asset_id, AssetAction::LegalSell, actor, headers, payload).await
-}
-
-async fn transfer_asset(
-    State(state): State<AppState>,
-    Path(asset_id): Path<String>,
-    actor: ActorContext,
-    headers: HeaderMap,
-    Json(payload): Json<AssetActionRequest>,
-) -> impl IntoResponse {
-    execute_asset_action(state, asset_id, AssetAction::Transfer, actor, headers, payload).await
 }
 
 async fn consume_asset(

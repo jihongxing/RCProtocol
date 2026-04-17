@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use rc_common::errors::RcError;
 use serde::Serialize;
+use serde_json::Value;
 use sqlx::{PgPool, Row};
 
 pub struct AssetVerifyRow {
@@ -32,6 +33,8 @@ pub struct AssetDetail {
     pub external_product_name: Option<String>,
     pub external_product_url: Option<String>,
     pub asset_commitment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_commitment_payload: Option<Value>,
     pub brand_attestation_status: Option<String>,
     pub platform_attestation_status: Option<String>,
     pub current_state: String,
@@ -59,22 +62,26 @@ pub struct AssetStateEvent {
 }
 
 fn attestation_status_from_count(count: i64) -> Option<String> {
-    if count > 0 {
-        Some("issued".to_string())
-    } else {
-        None
-    }
+    if count > 0 { Some("issued".to_string()) } else { None }
+}
+
+async fn fetch_asset_commitment_payload(pool: &PgPool, commitment_id: Option<&str>) -> Result<Option<Value>, RcError> {
+    let Some(commitment_id) = commitment_id else { return Ok(None); };
+    let payload = sqlx::query_scalar::<_, Value>("SELECT canonical_payload FROM asset_commitments WHERE commitment_id = $1")
+        .bind(commitment_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|err| RcError::Database(err.to_string()))?;
+    Ok(payload)
 }
 
 pub async fn fetch_asset_by_uid(pool: &PgPool, uid: &str) -> Result<AssetVerifyRow, RcError> {
-    let row = sqlx::query(
-        "SELECT asset_id, brand_id, product_id, uid, current_state, last_verified_ctr, epoch, asset_commitment_id FROM assets WHERE uid = $1",
-    )
-    .bind(uid)
-    .fetch_optional(pool)
-    .await
-    .map_err(|err| RcError::Database(err.to_string()))?
-    .ok_or(RcError::AssetNotFound)?;
+    let row = sqlx::query("SELECT asset_id, brand_id, product_id, uid, current_state, last_verified_ctr, epoch, asset_commitment_id FROM assets WHERE uid = $1")
+        .bind(uid)
+        .fetch_optional(pool)
+        .await
+        .map_err(|err| RcError::Database(err.to_string()))?
+        .ok_or(RcError::AssetNotFound)?;
 
     Ok(AssetVerifyRow {
         asset_id: row.get("asset_id"),
@@ -95,14 +102,10 @@ pub async fn update_asset_ctr(pool: &PgPool, asset_id: &str, ctr: i32) -> Result
         .execute(pool)
         .await
         .map_err(|err| RcError::Database(err.to_string()))?;
-
     Ok(())
 }
 
-async fn fetch_virtual_mother_card_detail(
-    pool: &PgPool,
-    asset_id: &str,
-) -> Result<Option<VirtualMotherCardDetail>, RcError> {
+async fn fetch_virtual_mother_card_detail(pool: &PgPool, asset_id: &str) -> Result<Option<VirtualMotherCardDetail>, RcError> {
     let row = sqlx::query(
         r#"
         SELECT ad.authority_uid, ad.authority_type, ad.virtual_credential_hash, ad.key_epoch
@@ -128,7 +131,6 @@ async fn fetch_virtual_mother_card_detail(
     }))
 }
 
-/// Fetch asset detail by asset_id
 pub async fn fetch_asset_detail(pool: &PgPool, asset_id: &str) -> Result<AssetDetail, RcError> {
     let row = sqlx::query(
         r#"
@@ -146,27 +148,19 @@ pub async fn fetch_asset_detail(pool: &PgPool, asset_id: &str) -> Result<AssetDe
     .ok_or(RcError::AssetNotFound)?;
 
     let commitment_id: Option<String> = row.get("asset_commitment_id");
+    let asset_commitment_payload = fetch_asset_commitment_payload(pool, commitment_id.as_deref()).await?;
     let (brand_attestation_status, platform_attestation_status) = if let Some(commitment_id) = commitment_id.as_deref() {
-        let brand_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM brand_attestations WHERE asset_commitment_id = $1",
-        )
-        .bind(commitment_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|err| RcError::Database(err.to_string()))?;
-
-        let platform_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM platform_attestations WHERE asset_commitment_id = $1",
-        )
-        .bind(commitment_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|err| RcError::Database(err.to_string()))?;
-
-        (
-            attestation_status_from_count(brand_count),
-            attestation_status_from_count(platform_count),
-        )
+        let brand_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM brand_attestations WHERE asset_commitment_id = $1")
+            .bind(commitment_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|err| RcError::Database(err.to_string()))?;
+        let platform_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM platform_attestations WHERE asset_commitment_id = $1")
+            .bind(commitment_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|err| RcError::Database(err.to_string()))?;
+        (attestation_status_from_count(brand_count), attestation_status_from_count(platform_count))
     } else {
         (None, None)
     };
@@ -182,6 +176,7 @@ pub async fn fetch_asset_detail(pool: &PgPool, asset_id: &str) -> Result<AssetDe
         external_product_name: row.get("external_product_name"),
         external_product_url: row.get("external_product_url"),
         asset_commitment_id: commitment_id,
+        asset_commitment_payload,
         brand_attestation_status,
         platform_attestation_status,
         current_state: row.get("current_state"),
@@ -196,11 +191,7 @@ pub async fn fetch_asset_detail(pool: &PgPool, asset_id: &str) -> Result<AssetDe
     })
 }
 
-/// Fetch asset state events (audit history)
-pub async fn fetch_asset_history(
-    pool: &PgPool,
-    asset_id: &str,
-) -> Result<Vec<AssetStateEvent>, RcError> {
+pub async fn fetch_asset_history(pool: &PgPool, asset_id: &str) -> Result<Vec<AssetStateEvent>, RcError> {
     let rows = sqlx::query(
         r#"
         SELECT event_id, asset_id, action, from_state, to_state, actor_id, actor_role, trace_id, occurred_at
@@ -214,29 +205,23 @@ pub async fn fetch_asset_history(
     .await
     .map_err(|err| RcError::Database(err.to_string()))?;
 
-    let events = rows
-        .into_iter()
-        .map(|row| {
-            let event_id: uuid::Uuid = row.get("event_id");
-            let trace_id: Option<uuid::Uuid> = row.get("trace_id");
-            AssetStateEvent {
-                event_id: event_id.to_string(),
-                asset_id: row.get("asset_id"),
-                action: row.get("action"),
-                from_state: row.get("from_state"),
-                to_state: row.get("to_state"),
-                actor_id: row.get("actor_id"),
-                actor_role: row.get("actor_role"),
-                trace_id: trace_id.map(|id| id.to_string()),
-                occurred_at: row.get("occurred_at"),
-            }
-        })
-        .collect();
-
-    Ok(events)
+    Ok(rows.into_iter().map(|row| {
+        let event_id: uuid::Uuid = row.get("event_id");
+        let trace_id: Option<uuid::Uuid> = row.get("trace_id");
+        AssetStateEvent {
+            event_id: event_id.to_string(),
+            asset_id: row.get("asset_id"),
+            action: row.get("action"),
+            from_state: row.get("from_state"),
+            to_state: row.get("to_state"),
+            actor_id: row.get("actor_id"),
+            actor_role: row.get("actor_role"),
+            trace_id: trace_id.map(|id| id.to_string()),
+            occurred_at: row.get("occurred_at"),
+        }
+    }).collect())
 }
 
-/// List assets with filters and pagination
 pub async fn list_assets(
     pool: &PgPool,
     brand_id: Option<&str>,
@@ -247,39 +232,16 @@ pub async fn list_assets(
 ) -> Result<(Vec<AssetDetail>, i64), RcError> {
     let mut query = String::from("SELECT COUNT(*) FROM assets WHERE 1=1");
     let mut condition_strings = Vec::new();
-
-    if brand_id.is_some() {
-        condition_strings.push("brand_id = $1".to_string());
-    }
-    if batch_id.is_some() {
-        let idx = condition_strings.len() + 1;
-        condition_strings.push(format!("batch_id = ${}", idx));
-    }
-    if current_state.is_some() {
-        let idx = condition_strings.len() + 1;
-        condition_strings.push(format!("current_state = ${}", idx));
-    }
-
-    for condition in &condition_strings {
-        query.push_str(" AND ");
-        query.push_str(condition);
-    }
+    if brand_id.is_some() { condition_strings.push("brand_id = $1".to_string()); }
+    if batch_id.is_some() { condition_strings.push(format!("batch_id = ${}", condition_strings.len() + 1)); }
+    if current_state.is_some() { condition_strings.push(format!("current_state = ${}", condition_strings.len() + 1)); }
+    for condition in &condition_strings { query.push_str(" AND "); query.push_str(condition); }
 
     let mut count_query = sqlx::query_scalar::<_, i64>(&query);
-    if let Some(brand) = brand_id {
-        count_query = count_query.bind(brand);
-    }
-    if let Some(batch) = batch_id {
-        count_query = count_query.bind(batch);
-    }
-    if let Some(state) = current_state {
-        count_query = count_query.bind(state);
-    }
-
-    let total = count_query
-        .fetch_one(pool)
-        .await
-        .map_err(|err| RcError::Database(err.to_string()))?;
+    if let Some(brand) = brand_id { count_query = count_query.bind(brand); }
+    if let Some(batch) = batch_id { count_query = count_query.bind(batch); }
+    if let Some(state) = current_state { count_query = count_query.bind(state); }
+    let total = count_query.fetch_one(pool).await.map_err(|err| RcError::Database(err.to_string()))?;
 
     let mut select_query = String::from(
         r#"
@@ -287,65 +249,32 @@ pub async fn list_assets(
                external_product_url, asset_commitment_id, current_state, previous_state, owner_id, key_epoch,
                activated_at, sold_at, created_at, updated_at
         FROM assets WHERE 1=1
-        "#
+        "#,
     );
-
-    for condition in &condition_strings {
-        select_query.push_str(" AND ");
-        select_query.push_str(condition);
-    }
-
+    for condition in &condition_strings { select_query.push_str(" AND "); select_query.push_str(condition); }
     select_query.push_str(" ORDER BY created_at DESC LIMIT $");
     select_query.push_str(&(condition_strings.len() + 1).to_string());
     select_query.push_str(" OFFSET $");
     select_query.push_str(&(condition_strings.len() + 2).to_string());
 
     let mut fetch_query = sqlx::query(&select_query);
-    if let Some(brand) = brand_id {
-        fetch_query = fetch_query.bind(brand);
-    }
-    if let Some(batch) = batch_id {
-        fetch_query = fetch_query.bind(batch);
-    }
-    if let Some(state) = current_state {
-        fetch_query = fetch_query.bind(state);
-    }
-    fetch_query = fetch_query.bind(limit).bind(offset);
-
-    let rows = fetch_query
-        .fetch_all(pool)
-        .await
-        .map_err(|err| RcError::Database(err.to_string()))?;
+    if let Some(brand) = brand_id { fetch_query = fetch_query.bind(brand); }
+    if let Some(batch) = batch_id { fetch_query = fetch_query.bind(batch); }
+    if let Some(state) = current_state { fetch_query = fetch_query.bind(state); }
+    let rows = fetch_query.bind(limit).bind(offset).fetch_all(pool).await.map_err(|err| RcError::Database(err.to_string()))?;
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
         let asset_id: String = row.get("asset_id");
         let commitment_id: Option<String> = row.get("asset_commitment_id");
+        let asset_commitment_payload = fetch_asset_commitment_payload(pool, commitment_id.as_deref()).await?;
         let (brand_attestation_status, platform_attestation_status) = if let Some(commitment_id) = commitment_id.as_deref() {
-            let brand_count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM brand_attestations WHERE asset_commitment_id = $1",
-            )
-            .bind(commitment_id)
-            .fetch_one(pool)
-            .await
-            .map_err(|err| RcError::Database(err.to_string()))?;
-
-            let platform_count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM platform_attestations WHERE asset_commitment_id = $1",
-            )
-            .bind(commitment_id)
-            .fetch_one(pool)
-            .await
-            .map_err(|err| RcError::Database(err.to_string()))?;
-
-            (
-                attestation_status_from_count(brand_count),
-                attestation_status_from_count(platform_count),
-            )
+            let brand_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM brand_attestations WHERE asset_commitment_id = $1").bind(commitment_id).fetch_one(pool).await.map_err(|err| RcError::Database(err.to_string()))?;
+            let platform_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM platform_attestations WHERE asset_commitment_id = $1").bind(commitment_id).fetch_one(pool).await.map_err(|err| RcError::Database(err.to_string()))?;
+            (attestation_status_from_count(brand_count), attestation_status_from_count(platform_count))
         } else {
             (None, None)
         };
-
         let virtual_mother_card = fetch_virtual_mother_card_detail(pool, &asset_id).await?;
         items.push(AssetDetail {
             asset_id,
@@ -356,6 +285,7 @@ pub async fn list_assets(
             external_product_name: row.get("external_product_name"),
             external_product_url: row.get("external_product_url"),
             asset_commitment_id: commitment_id,
+            asset_commitment_payload,
             brand_attestation_status,
             platform_attestation_status,
             current_state: row.get("current_state"),

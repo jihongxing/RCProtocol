@@ -11,6 +11,7 @@ use http_body_util::BodyExt;
 use rc_kms::{KeyProvider, SoftwareKms};
 use rc_test_helpers::{fixtures::{generate_test_asset_id, generate_test_batch_id, generate_test_brand_id, seed_brand}, TestDb};
 use rc_api::auth::middleware::{auth_middleware, AuthState};
+use rc_api::db::asset_commitments::{fetch_asset_commitment_by_id, fetch_asset_commitment_by_uid_epoch};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -37,6 +38,7 @@ fn test_router(db: PgPool, kms: Arc<dyn KeyProvider + Send + Sync>) -> Router {
     let auth_state = AuthState::from(&state);
     Router::new()
         .merge(rc_api::routes::protocol::write_router())
+        .merge(rc_api::routes::assets::router())
         .layer(axum_mw::from_fn_with_state(auth_state, auth_middleware))
         .with_state(state)
 }
@@ -51,7 +53,7 @@ fn setup_kms() -> Arc<dyn KeyProvider + Send + Sync> {
 }
 
 #[tokio::test]
-async fn test_activation_creates_virtual_mother_card() {
+async fn test_activation_entangle_creates_virtual_mother_card() {
     let test_db = TestDb::new().await;
     let db = test_db.pool().clone();
     let kms = setup_kms();
@@ -63,36 +65,71 @@ async fn test_activation_creates_virtual_mother_card() {
     let asset_id = generate_test_asset_id();
     assert!(asset_id.starts_with("asset_"));
     let test_uid = "04A31B2C3D4E5F";
+    let actor_id = "test-user-001";
 
     seed_brand(&db, &test_brand_id, "Test Brand").await;
-    sqlx::query("INSERT INTO assets (asset_id, brand_id, uid, current_state, epoch) VALUES ($1, $2, $3, 'RotatingKeys', 0)")
+    sqlx::query("INSERT INTO assets (asset_id, brand_id, uid, current_state, epoch) VALUES ($1, $2, $3, 'Unassigned', 0)")
         .bind(&asset_id)
         .bind(&test_brand_id)
         .bind(test_uid)
         .execute(&db).await.unwrap();
 
-    let trace_id = Uuid::new_v4();
-    let idempotency_key = format!("idem-{}", nanoid::nanoid!(12));
-    let actor_id = "test-user-001";
+    let activate_req = Request::builder()
+        .method("POST")
+        .uri(format!("/assets/{}/activate", asset_id))
+        .header("Content-Type", "application/json")
+        .header("X-Trace-Id", Uuid::new_v4().to_string())
+        .header("X-Idempotency-Key", format!("idem-{}", nanoid::nanoid!(12)))
+        .header("Authorization", actor_id)
+        .header("X-Actor-Role", "Brand")
+        .header("X-Brand-Id", &test_brand_id)
+        .body(Body::from(json!({
+            "external_product_id": "sku-entangle-001",
+            "external_product_name": "Entangle Product",
+            "external_product_url": "https://example.com/p/entangle"
+        }).to_string()))
+        .unwrap();
 
-    let req = Request::builder()
+    let activate_resp = router.clone().oneshot(activate_req).await.unwrap();
+    assert_eq!(activate_resp.status(), StatusCode::OK);
+    let activate_body = activate_resp.into_body().collect().await.unwrap().to_bytes();
+    let activate_json: Value = serde_json::from_slice(&activate_body).unwrap();
+    assert_eq!(activate_json["to_state"], "RotatingKeys");
+    assert!(activate_json.get("virtual_mother_card").is_none());
+
+    let detail_before_req = Request::builder()
+        .method("GET")
+        .uri(format!("/assets/{}", asset_id))
+        .header("Authorization", actor_id)
+        .header("X-Actor-Role", "Brand")
+        .header("X-Brand-Id", &test_brand_id)
+        .body(Body::empty())
+        .unwrap();
+    let detail_before_resp = router.clone().oneshot(detail_before_req).await.unwrap();
+    assert_eq!(detail_before_resp.status(), StatusCode::OK);
+    let detail_before_body = detail_before_resp.into_body().collect().await.unwrap().to_bytes();
+    let detail_before_json: Value = serde_json::from_slice(&detail_before_body).unwrap();
+    assert!(detail_before_json["virtual_mother_card"].is_null());
+
+    let entangle_req = Request::builder()
         .method("POST")
         .uri(format!("/assets/{}/activate-entangle", asset_id))
         .header("Content-Type", "application/json")
-        .header("X-Trace-Id", trace_id.to_string())
-        .header("X-Idempotency-Key", &idempotency_key)
+        .header("X-Trace-Id", Uuid::new_v4().to_string())
+        .header("X-Idempotency-Key", format!("idem-{}", nanoid::nanoid!(12)))
         .header("Authorization", actor_id)
         .header("X-Actor-Role", "Brand")
         .header("X-Brand-Id", &test_brand_id)
         .body(Body::from(json!({"previous_state": null}).to_string()))
         .unwrap();
 
-    let response = router.oneshot(req).await.unwrap();
+    let response = router.clone().oneshot(entangle_req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK, "ActivateEntangle should succeed");
 
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     let body: Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(body["to_state"], "EntangledPending");
+    assert!(body["virtual_mother_card"].is_object());
 
     let authority_row: Option<(String, String, String, i32, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT authority_uid, authority_type, brand_id, key_epoch, virtual_credential_hash, bound_user_id \
@@ -134,6 +171,21 @@ async fn test_activation_creates_virtual_mother_card() {
     let expected_hash_bytes = rc_crypto::hmac_sha256::compute(k_chip_mother.as_bytes(), authority_uid.as_bytes());
     let expected_hash = hex::encode(expected_hash_bytes);
     assert_eq!(credential_hash.unwrap(), expected_hash, "credential hash should match HMAC-SHA256(K_chip_mother, authority_uid)");
+
+    let detail_after_req = Request::builder()
+        .method("GET")
+        .uri(format!("/assets/{}", asset_id))
+        .header("Authorization", actor_id)
+        .header("X-Actor-Role", "Brand")
+        .header("X-Brand-Id", &test_brand_id)
+        .body(Body::empty())
+        .unwrap();
+    let detail_after_resp = router.oneshot(detail_after_req).await.unwrap();
+    assert_eq!(detail_after_resp.status(), StatusCode::OK);
+    let detail_after_body = detail_after_resp.into_body().collect().await.unwrap().to_bytes();
+    let detail_after_json: Value = serde_json::from_slice(&detail_after_body).unwrap();
+    assert_eq!(detail_after_json["current_state"], "EntangledPending");
+    assert_eq!(detail_after_json["virtual_mother_card"]["authority_uid"], authority_uid);
 
     test_db.cleanup().await;
 }
@@ -188,7 +240,7 @@ async fn test_activate_generates_asset_commitment() {
         }).to_string()))
         .unwrap();
 
-    let response = router.oneshot(req).await.unwrap();
+    let response = router.clone().oneshot(req).await.unwrap();
     let status = response.status();
     if status != StatusCode::OK {
         let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -200,6 +252,7 @@ async fn test_activate_generates_asset_commitment() {
     let commitment_id = body["asset_commitment_id"].as_str().unwrap().to_string();
     assert!(!commitment_id.is_empty());
     assert_eq!(body["to_state"], "RotatingKeys");
+    assert!(body.get("virtual_mother_card").is_none());
 
     let asset_row: (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
         "SELECT asset_commitment_id, external_product_id, batch_id FROM assets WHERE asset_id = $1"
@@ -227,6 +280,59 @@ async fn test_activate_generates_asset_commitment() {
     assert_eq!(commitment_row.4["version"], "ac_v1");
     assert_eq!(commitment_row.4["asset_uid"], test_uid);
     assert_eq!(commitment_row.4["brand_id"], commitment_row.0);
+
+    let by_uid_epoch = fetch_asset_commitment_by_uid_epoch(&db, test_uid, 0).await.unwrap().unwrap();
+    assert_eq!(by_uid_epoch.commitment_id, commitment_id);
+
+    let detail_req = Request::builder()
+        .method("GET")
+        .uri(format!("/assets/{}", asset_id))
+        .header("Authorization", "brand-user-001")
+        .header("X-Actor-Role", "Brand")
+        .header("X-Brand-Id", &test_brand_id)
+        .body(Body::empty())
+        .unwrap();
+    let detail_resp = router.clone().oneshot(detail_req).await.unwrap();
+    assert_eq!(detail_resp.status(), StatusCode::OK);
+    let detail_body = detail_resp.into_body().collect().await.unwrap().to_bytes();
+    let detail_json: Value = serde_json::from_slice(&detail_body).unwrap();
+    assert_eq!(detail_json["asset_commitment_id"], commitment_id);
+    assert_eq!(detail_json["asset_commitment_payload"]["asset_uid"], test_uid);
+    assert_eq!(detail_json["asset_commitment_payload"]["version"], "ac_v1");
+    assert_eq!(detail_json["brand_attestation_status"], "issued");
+    assert_eq!(detail_json["platform_attestation_status"], "issued");
+    assert!(detail_json["virtual_mother_card"].is_null());
+
+    let attestation_req = Request::builder()
+        .method("GET")
+        .uri(format!("/assets/{}/attestations", asset_id))
+        .header("Authorization", "brand-user-001")
+        .header("X-Actor-Role", "Brand")
+        .header("X-Brand-Id", &test_brand_id)
+        .body(Body::empty())
+        .unwrap();
+    let attestation_resp = router.clone().oneshot(attestation_req).await.unwrap();
+    assert_eq!(attestation_resp.status(), StatusCode::OK);
+    let attestation_body = attestation_resp.into_body().collect().await.unwrap().to_bytes();
+    let attestation_json: Value = serde_json::from_slice(&attestation_body).unwrap();
+    assert_eq!(attestation_json["asset_commitment_id"], commitment_id);
+    assert_eq!(attestation_json["brand_attestation_status"], "issued");
+    assert_eq!(attestation_json["platform_attestation_status"], "issued");
+    assert_eq!(attestation_json["brand_attestation"]["statement"], "brand_issues_asset");
+    assert_eq!(attestation_json["platform_attestation"]["statement"], "platform_accepts_asset");
+
+    let event_commitment: Option<String> = sqlx::query_scalar(
+        "SELECT asset_commitment_id FROM asset_state_events WHERE asset_id = $1 ORDER BY occurred_at DESC LIMIT 1"
+    )
+    .bind(&asset_id)
+    .fetch_optional(&db)
+    .await
+    .unwrap()
+    .flatten();
+    assert_eq!(event_commitment.as_deref(), Some(commitment_id.as_str()));
+
+    let commitment_row_full = fetch_asset_commitment_by_id(&db, &commitment_id).await.unwrap();
+    assert_eq!(commitment_row_full.commitment_id, commitment_id);
 
     let brand_attestation: Option<(String, String, String)> = sqlx::query_as(
         "SELECT asset_commitment_id, statement, version FROM brand_attestations WHERE asset_commitment_id = $1"

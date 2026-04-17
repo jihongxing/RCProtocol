@@ -68,6 +68,10 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 - `product/commercial-scenario-and-buyer.md`
 - `business/business-model.md`
 - `ops/` 下运维手册
+- `ops/stage-5-mvp-runbook.md`
+- `ops/stage-5-error-matrix.md`
+- `ops/stage-5-performance-baseline.md`
+- `ops/stage-5-mvp-acceptance.md`
 
 以下文件属于 **当前协议演进实现提案（Draft Specs）**，可作为后续 Stage 7~10 的实现设计输入，但尚未替代现有落地基线：
 
@@ -75,12 +79,14 @@ RCProtocol 是一个面向高价值实物资产的数字主权协议与平台。
 - `specs/spec-brand-attestation.md`
 - `specs/spec-platform-attestation.md`
 - `specs/spec-verification-v2.md`
+- `specs/spec-stage-5-mvp-delivery.md`（其中 Stage 5 主链路已明确为两阶段激活：`/activate` 负责承诺/声明，`/activate-entangle` 负责虚拟母卡/母子绑定）
 
 以下文件属于 **当前协议演进任务拆解（Implementation Tasks）**，用于把 Draft Specs 进一步转成可排期、可编码、可验收的执行任务：
 
 - `tasks/task-asset-commitment-migration.md`
 - `tasks/task-attestation-flows.md`
 - `tasks/task-verification-v2-implementation.md`
+- `tasks/task-stage-5-mvp-delivery.md`
 
 以下文件属于 **代码级实施计划（Code Plans）**，用于把任务文档进一步映射到当前仓库的模块、函数、migration 与测试文件：
 

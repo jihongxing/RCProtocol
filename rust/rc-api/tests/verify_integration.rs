@@ -10,7 +10,15 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
+use rc_api::attestation_brand::{build_brand_attestation_payload, sign_brand_attestation};
+use rc_api::attestation_platform::{build_platform_attestation_payload, sign_platform_attestation};
+use chrono::{DateTime, Utc};
+use ed25519_dalek::SigningKey;
+use sha2::{Digest, Sha256};
+
 async fn ensure_attestation_tables(db: &PgPool) {
+    sqlx::query("CREATE TABLE IF NOT EXISTS brand_attestations (attestation_id TEXT PRIMARY KEY, version TEXT NOT NULL, brand_id TEXT NOT NULL, asset_commitment_id TEXT NOT NULL, statement TEXT NOT NULL, key_id TEXT NOT NULL, canonical_payload JSONB NOT NULL, signature TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(asset_commitment_id, statement))").execute(db).await.unwrap();
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_brand_attestations_commitment ON brand_attestations(asset_commitment_id)").execute(db).await.unwrap();
     sqlx::query("CREATE TABLE IF NOT EXISTS platform_attestations (attestation_id TEXT PRIMARY KEY, version TEXT NOT NULL, platform_id TEXT NOT NULL, asset_commitment_id TEXT NOT NULL, statement TEXT NOT NULL, key_id TEXT NOT NULL, canonical_payload JSONB NOT NULL, signature TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(asset_commitment_id, statement))").execute(db).await.unwrap();
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_platform_attestations_platform_id ON platform_attestations(platform_id)").execute(db).await.unwrap();
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_platform_attestations_commitment ON platform_attestations(asset_commitment_id)").execute(db).await.unwrap();
@@ -42,6 +50,44 @@ fn setup_kms() -> Arc<dyn KeyProvider + Send + Sync> {
     std::env::set_var("RC_ROOT_KEY_HEX", TEST_ROOT_KEY_HEX);
     std::env::set_var("RC_SYSTEM_ID", TEST_SYSTEM_ID);
     Arc::new(SoftwareKms::from_env().expect("test KMS init"))
+}
+
+fn test_signing_key(secret: &str) -> SigningKey {
+    let digest = Sha256::digest(secret.as_bytes());
+    let bytes: [u8; 32] = digest.into();
+    SigningKey::from_bytes(&bytes)
+}
+
+async fn seed_valid_attestations(pool: &PgPool, brand_id: &str, commitment_id: &str) {
+    std::env::set_var("RC_BRAND_ATTESTATION_SECRET", "brand-test-secret");
+    std::env::set_var("RC_BRAND_ATTESTATION_KEY_ID", "brand-key-2026-01");
+    std::env::set_var("RC_PLATFORM_ATTESTATION_SECRET", "platform-test-secret");
+    std::env::set_var("RC_PLATFORM_ATTESTATION_KEY_ID", "platform-key-2026-01");
+    std::env::set_var("RC_PLATFORM_ID", TEST_SYSTEM_ID);
+
+    let issued_at = DateTime::parse_from_rfc3339("2026-04-09T12:00:00Z").unwrap().with_timezone(&Utc);
+
+    let brand_payload = build_brand_attestation_payload(brand_id, commitment_id, issued_at, "brand-key-2026-01");
+    let brand_signature = sign_brand_attestation(&brand_payload, &test_signing_key("brand-test-secret")).unwrap();
+    sqlx::query("INSERT INTO brand_attestations (attestation_id, version, brand_id, asset_commitment_id, statement, key_id, canonical_payload, signature, issued_at) VALUES ($1, 'ba_v1', $2, $3, 'brand_issues_asset', 'brand-key-2026-01', $4, $5, $6)")
+        .bind("ba_test_v2")
+        .bind(brand_id)
+        .bind(commitment_id)
+        .bind(serde_json::to_value(&brand_payload).unwrap())
+        .bind(brand_signature)
+        .bind(issued_at)
+        .execute(pool).await.unwrap();
+
+    let platform_payload = build_platform_attestation_payload(TEST_SYSTEM_ID, commitment_id, issued_at, "platform-key-2026-01");
+    let platform_signature = sign_platform_attestation(&platform_payload, &test_signing_key("platform-test-secret")).unwrap();
+    sqlx::query("INSERT INTO platform_attestations (attestation_id, version, platform_id, asset_commitment_id, statement, key_id, canonical_payload, signature, issued_at) VALUES ($1, 'pa_v1', $2, $3, 'platform_accepts_asset', 'platform-key-2026-01', $4, $5, $6)")
+        .bind("pa_test_v2")
+        .bind(TEST_SYSTEM_ID)
+        .bind(commitment_id)
+        .bind(serde_json::to_value(&platform_payload).unwrap())
+        .bind(platform_signature)
+        .bind(issued_at)
+        .execute(pool).await.unwrap();
 }
 
 fn compute_test_cmac(
@@ -298,20 +344,7 @@ async fn test_verify_v2_returns_attestation_summary() {
         .await
         .unwrap();
 
-    sqlx::query("INSERT INTO brand_attestations (attestation_id, version, brand_id, asset_commitment_id, statement, key_id, canonical_payload, signature, issued_at) VALUES ($1, 'ba_v1', $2, $3, 'brand_issues_asset', 'brand-key-2026-01', '{}'::jsonb, 'sig', NOW())")
-        .bind("ba_test_v2")
-        .bind(&brand_id)
-        .bind(commitment_id)
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    sqlx::query("INSERT INTO platform_attestations (attestation_id, version, platform_id, asset_commitment_id, statement, key_id, canonical_payload, signature, issued_at) VALUES ($1, 'pa_v1', 'test-system', $2, 'platform_accepts_asset', 'platform-key-2026-01', '{}'::jsonb, 'sig', NOW())")
-        .bind("pa_test_v2")
-        .bind(commitment_id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    seed_valid_attestations(&pool, &brand_id, commitment_id).await;
 
     let ctr: [u8; 3] = [0x01, 0x00, 0x00];
     let cmac = compute_test_cmac(kms.as_ref(), &brand_id, &TEST_UID_BYTES, &ctr, 0);
@@ -320,11 +353,68 @@ async fn test_verify_v2_returns_attestation_summary() {
     let (status, json) = get_json(app, &uri).await;
 
     assert_eq!(status, 200);
-    assert_eq!(json["verification_status"], "verified");
+    assert_eq!(json["verification_version"], "v2");
+    assert_eq!(json["tag_authentication"], "passed");
+    assert_eq!(json["verification_status"], "authentic");
     assert_eq!(json["asset"]["asset_commitment_id"], commitment_id);
-    assert_eq!(json["attestation_summary"]["asset_commitment_id"], commitment_id);
-    assert_eq!(json["attestation_summary"]["brand_attestation_status"], "issued");
-    assert_eq!(json["attestation_summary"]["platform_attestation_status"], "issued");
+    assert_eq!(json["attestation_status"]["asset_commitment_id"], commitment_id);
+    assert_eq!(json["attestation_status"]["brand_attestation"], "valid");
+    assert_eq!(json["attestation_status"]["platform_attestation"], "valid");
 
+    test_db.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_verify_v2_incomplete_attestation_when_missing() {
+    let kms = setup_kms();
+    let (test_db, pool, brand_id, product_id) = setup_db().await;
+    let asset_id = ids::generate_asset_id();
+    seed_asset(&pool, &brand_id, &product_id, &asset_id, TEST_UID_HEX, "Activated", None).await;
+    let ctr: [u8; 3] = [0x01, 0x00, 0x00];
+    let cmac = compute_test_cmac(kms.as_ref(), &brand_id, &TEST_UID_BYTES, &ctr, 0);
+    let app = test_router(pool.clone(), kms);
+    let uri = format!("/verify/v2?uid={TEST_UID_HEX}&ctr={}&cmac={}", hex::encode(ctr), hex::encode(cmac));
+    let (_, json) = get_json(app, &uri).await;
+    assert_eq!(json["verification_status"], "incomplete_attestation");
+    assert_eq!(json["attestation_status"]["brand_attestation"], "missing");
+    assert_eq!(json["attestation_status"]["platform_attestation"], "missing");
+    test_db.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_verify_v2_restricted_when_state_restricted() {
+    let kms = setup_kms();
+    let (test_db, pool, brand_id, product_id) = setup_db().await;
+    let asset_id = ids::generate_asset_id();
+    let commitment_id = "commitment_test_v2_restricted";
+    ensure_attestation_tables(&pool).await;
+    seed_asset(&pool, &brand_id, &product_id, &asset_id, TEST_UID_HEX, "Disputed", Some("Activated")).await;
+    sqlx::query("UPDATE assets SET asset_commitment_id = $2 WHERE asset_id = $1").bind(&asset_id).bind(commitment_id).execute(&pool).await.unwrap();
+    seed_valid_attestations(&pool, &brand_id, commitment_id).await;
+    let ctr: [u8; 3] = [0x01, 0x00, 0x00];
+    let cmac = compute_test_cmac(kms.as_ref(), &brand_id, &TEST_UID_BYTES, &ctr, 0);
+    let app = test_router(pool.clone(), kms);
+    let uri = format!("/verify/v2?uid={TEST_UID_HEX}&ctr={}&cmac={}", hex::encode(ctr), hex::encode(cmac));
+    let (_, json) = get_json(app, &uri).await;
+    assert_eq!(json["verification_status"], "restricted");
+    assert!(json["protocol_state"]["risk_flags"].as_array().unwrap().iter().any(|f| f == "frozen_asset"));
+    test_db.cleanup().await;
+}
+
+#[tokio::test]
+async fn test_verify_v2_authentication_failed_shape() {
+    let kms = setup_kms();
+    let (test_db, pool, brand_id, product_id) = setup_db().await;
+    let asset_id = ids::generate_asset_id();
+    seed_asset(&pool, &brand_id, &product_id, &asset_id, TEST_UID_HEX, "Activated", None).await;
+    let ctr: [u8; 3] = [0x01, 0x00, 0x00];
+    let mut cmac = compute_test_cmac(kms.as_ref(), &brand_id, &TEST_UID_BYTES, &ctr, 0);
+    cmac[0] ^= 0xFF;
+    let app = test_router(pool.clone(), kms);
+    let uri = format!("/verify/v2?uid={TEST_UID_HEX}&ctr={}&cmac={}", hex::encode(ctr), hex::encode(cmac));
+    let (_, json) = get_json(app, &uri).await;
+    assert_eq!(json["tag_authentication"], "failed");
+    assert_eq!(json["verification_status"], "authentication_failed");
+    assert!(json["error_codes"].as_array().unwrap().iter().any(|f| f == "TAG_AUTHENTICATION_FAILED"));
     test_db.cleanup().await;
 }
