@@ -3,6 +3,11 @@ import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import ScanPage from '../index.vue'
 
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: vi.fn() }),
+}))
+
 const mockBlindLogAsset = vi.fn()
 const mockStockInAsset = vi.fn()
 

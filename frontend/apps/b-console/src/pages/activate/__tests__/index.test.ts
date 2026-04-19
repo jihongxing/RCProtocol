@@ -3,6 +3,11 @@ import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import ActivatePage from '../index.vue'
 
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: vi.fn() }),
+}))
+
 type Step = 'idle' | 'step1' | 'step2' | 'step3' | 'completed'
 type FlowError = { step: number; message: string; code?: string }
 type FlowResult = { asset_id: string; final_state: string }
